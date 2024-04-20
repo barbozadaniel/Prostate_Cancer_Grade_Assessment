@@ -1,0 +1,17 @@
+numpy
+pandas
+opencv-python
+Pillow
+openslide-python
+torch
+torchvision
+scikit-image
+scikit-learn
+imagecodecs
+matplotlib
+ipywidgets
+plotly
+tqdm
+efficientnet_pytorch
+lightning
+tensorboard
