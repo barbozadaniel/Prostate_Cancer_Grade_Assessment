@@ -3,3 +3,4 @@ logs/
 openslide-bin-4.0.0.2-windows-x64/
 data_env/
 *.pyc
+*.pth

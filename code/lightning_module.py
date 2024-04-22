@@ -33,7 +33,10 @@ class LightningModel(L.LightningModule):
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.hparams.learning_rate, weight_decay=3e-6)
         # scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=10 * self.hparams.learning_rate, epochs=self.hparams.num_epochs)
         # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epochs=self.hparams.num_epochs)
-        return [optimizer] #, [scheduler]
+        # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=1, )
+        # return {"optimizer": optimizer, "lr_scheduler": scheduler, "monitor": "kappa"}
+        return {"optimizer": optimizer}
+        # return [optimizer], [scheduler]
 
     def training_step(self, batch, batch_idx):
         # This is where you must define what happens during a training step (per batch)
@@ -42,6 +45,8 @@ class LightningModel(L.LightningModule):
         predicted_labels = logits.argmax(1)
         # Pytorch lightning will call .backward on what is called 'loss' in output
         # 'log' is reserved for tensorboard and will log everything define in the dictionary
+        self.log('train_loss', loss)
+
         return {'loss': loss, 'log': {'train_loss': loss}}
 
     def validation_step(self, batch, batch_idx):
@@ -50,6 +55,8 @@ class LightningModel(L.LightningModule):
         loss = self.cross_entropy_loss(logits, batch['isup_grade']).unsqueeze(0)
         predicted_labels = logits.argmax(1)
         self.validation_step_outputs.append({'val_loss': loss, 'preds': predicted_labels, 'gt': batch['isup_grade']})
+        self.log('val_loss', loss)
+
         return {'val_loss': loss, 'preds': predicted_labels, 'gt': batch['isup_grade']}
 
     def on_validation_epoch_end(self):
@@ -64,7 +71,8 @@ class LightningModel(L.LightningModule):
         kappa = cohen_kappa_score(preds, gt, weights='quadratic')
         tensorboard_logs = {'val_loss': avg_loss, 'kappa': kappa}
         print(f'Epoch {self.current_epoch}: {avg_loss:.2f}, kappa: {kappa:.4f}')
-        
+
+        self.log('kappa', kappa)
         self.validation_step_outputs.clear()
 
         return {'avg_val_loss': avg_loss, 'log': tensorboard_logs}
