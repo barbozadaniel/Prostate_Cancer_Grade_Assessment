@@ -16,6 +16,7 @@ class LightningModel(L.LightningModule):
 
         self.model = model
         self.hparams.update(h_params)
+        self.save_hyperparameters(ignore=["model"])
         self.validation_step_outputs = []
 
     def forward(self, batch):

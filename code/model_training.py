@@ -18,23 +18,22 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 SEED: int = 123
 NUM_WORKERS: int = 8
 
-TRAINING_DATA_FOLDER: str = 'train-tiled-prostate-36x256x256'
-TESTING_DATA_FOLDER: str = 'test-tiled-prostate-36x256x256'
+TRAINING_DATA_FOLDER: str = 'train-nontiled-prostate-1x512x512'
+TESTING_DATA_FOLDER: str = 'test-nontiled-prostate-1x512x512'
 DATASET_FOLDER_PATH: str = os.path.join(os.path.abspath(''), 'dataset')
 TRAINED_MODELS_FOLDER: str = './trained_models'
 OUTPUT_LOG_FOLDER: str = './logs'
-TRAIN_DATA_CSV_PATH: str = os.path.join(
-    DATASET_FOLDER_PATH, TRAINING_DATA_FOLDER, 'train.csv')
+TRAIN_DATA_CSV_PATH: str = os.path.join(DATASET_FOLDER_PATH, TRAINING_DATA_FOLDER, 'train.csv')
 
 
 def main():
     L.seed_everything(SEED)
     h_params: HyperParameters = HyperParameters(backbone='resnext50_semi',
                                                 head='basic',
-                                                batch_size=2,
+                                                batch_size=4,
                                                 learning_rate=1e-4,
-                                                num_tiles=36,
-                                                tile_size=256,
+                                                num_tiles=1,
+                                                tile_size=512,
                                                 c_out=6,
                                                 num_epochs=2)
 
@@ -49,8 +48,9 @@ def main():
     k_fold = StratifiedKFold(n_splits=5, random_state=SEED, shuffle=True)
 
     df_train_data: pd.DataFrame = pd.read_csv(TRAIN_DATA_CSV_PATH)
-    cv_splits = k_fold.split(df_train_data[df_train_data.is_present == 1],
-                             df_train_data[df_train_data.is_present == 1]['isup_grade'])
+    df_train_data = df_train_data[df_train_data.is_present == 1]
+
+    cv_splits = k_fold.split(df_train_data, df_train_data['isup_grade'])
     date = datetime.now().strftime('%Y%m%d-%H%M%S')
 
     lightning_model: LightningModel = LightningModel(model=model,
@@ -75,7 +75,7 @@ def main():
                                                              num_workers=NUM_WORKERS,
                                                              h_params=h_params)
 
-        trainer: L.Trainer = L.Trainer(max_epochs=50,
+        trainer: L.Trainer = L.Trainer(max_epochs=10,
                                        accelerator='cpu',
                                        devices=1,
                                        logger=tb_logger,
@@ -87,7 +87,7 @@ def main():
 
         torch.save(model.model.state_dict(), f'{TRAINED_MODELS_FOLDER}/{experiment_name}-{date}/fold_{fold}.pth')
 
-        break
+        # break
 
 
 if __name__ == '__main__':
