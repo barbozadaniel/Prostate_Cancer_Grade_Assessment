@@ -1,5 +1,5 @@
 # The path can also be read from a config file, etc.
-OPENSLIDE_PATH = r'C:\\NovinoAI\\openslide-bin-4.0.0.2-windows-x64\\bin'
+OPENSLIDE_PATH = r'C:\\Github\\Prostate_Cancer_Grade_Assessment\\openslide-bin-4.0.0.2-windows-x64\\bin'
 
 import os
 if hasattr(os, 'add_dll_directory'):
