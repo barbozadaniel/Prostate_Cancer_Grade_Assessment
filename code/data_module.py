@@ -1,6 +1,7 @@
 import os
 from typing import List
 
+import numpy as np
 import pandas as pd
 import PIL.Image as Image
 import lightning as L
@@ -8,9 +9,10 @@ import torch
 import torchvision.transforms as transforms
 import torch.utils.data as D
 from hyperparameters import HyperParameters
+from random import sample
 
 class TileDataset(D.Dataset):
-    def __init__(self, dataset_folder_path: str, df_data: pd.DataFrame, num_tiles: int, transform=None):
+    def __init__(self, dataset_folder_path: str, df_data: pd.DataFrame, num_tiles: int, num_tiles_select: int, transform=None):
         """
         dataset_folder_path: Folder path where the Dataset is located
         df_data: DataFrame containing image metadata
@@ -20,6 +22,7 @@ class TileDataset(D.Dataset):
         self.dataset_folder_path = dataset_folder_path
         self.df_data = df_data
         self.num_tiles = num_tiles
+        self.num_tiles_select = num_tiles_select
         self.list_images: List[str] = self.df_data['image_id'].values
 
         self.transform = transform
@@ -30,16 +33,18 @@ class TileDataset(D.Dataset):
 
         if self.num_tiles != 1:
             image_tiles = []
-            tiles = [f'{image_id}_{str(i)}.png' for i in range(0, self.num_tiles)]
+            list_idx = list(range(0, self.num_tiles))
+            list_selected_idx = sample(list_idx, self.num_tiles_select)
+            tiles = [f'{image_id}_{str(i)}.png' for i in list_selected_idx]
             for tile in tiles:
                 image = Image.open(os.path.join(self.dataset_folder_path, tile))
 
                 if self.transform is not None:
                     image = self.transform(image)
 
-                image = 1 - image
-                image = transforms.Normalize([1.0-0.90949707, 1.0-0.8188697, 1.0-0.87795304],
-                                             [0.1279171, 0.24528177, 0.16098117])(image)
+                image = transforms.ToTensor()(1 - np.array(image))
+                # image = transforms.Normalize([1.0-0.90949707, 1.0-0.8188697, 1.0-0.87795304],
+                #                              [0.1279171, 0.24528177, 0.16098117])(image)
                 image_tiles.append(image)
 
             image_tiles = torch.stack(image_tiles, dim=0)
@@ -114,10 +119,12 @@ class PandaDataModule(L.LightningDataModule):
         df_test_data = df_test_data[df_test_data.is_present == 1]
 
         self.train_dataset = TileDataset(os.path.join(self.train_folder_path, 'images'),
-                                         df_train_data.iloc[self.list_train_idx], self.h_params.num_tiles, self.train_transform)
+                                         df_train_data.iloc[self.list_train_idx],
+                                         self.h_params.num_tiles, self.h_params.num_tiles_select, self.train_transform)
 
         self.val_dataset = TileDataset(os.path.join(self.train_folder_path, 'images'),
-                                       df_train_data.iloc[self.list_val_idx], self.h_params.num_tiles, self.test_transform)
+                                       df_train_data.iloc[self.list_val_idx],
+                                       self.h_params.num_tiles, self.h_params.num_tiles_select, self.test_transform)
 
         # self.test_dataset = TileDataset(os.path.join(self.test_folder_path, 'images'),
         #                                 df_test_data, self.h_params.num_tiles, self.test_transform)
@@ -130,6 +137,7 @@ class PandaDataModule(L.LightningDataModule):
             shuffle=True,
             num_workers=self.num_workers,
             persistent_workers=True,
+            pin_memory=True
         )
         return train_loader
 
@@ -141,6 +149,7 @@ class PandaDataModule(L.LightningDataModule):
             shuffle=False,
             num_workers=self.num_workers,
             persistent_workers=True,
+            pin_memory=True
         )
         return valid_loader
 
