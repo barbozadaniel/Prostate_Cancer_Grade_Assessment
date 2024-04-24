@@ -126,8 +126,9 @@ class PandaDataModule(L.LightningDataModule):
                                        df_train_data.iloc[self.list_val_idx],
                                        self.h_params.num_tiles, self.h_params.num_tiles_select, self.test_transform)
 
-        # self.test_dataset = TileDataset(os.path.join(self.test_folder_path, 'images'),
-        #                                 df_test_data, self.h_params.num_tiles, self.test_transform)
+        self.test_dataset = TileDataset(os.path.join(self.test_folder_path, 'images'),
+                                        df_test_data,
+                                        self.h_params.num_tiles, self.h_params.num_tiles_select, self.test_transform)
 
     def train_dataloader(self):
         train_loader = D.DataLoader(
@@ -153,12 +154,26 @@ class PandaDataModule(L.LightningDataModule):
         )
         return valid_loader
 
-    # def test_dataloader(self):
-    #     test_loader = D.DataLoader(
-    #         dataset=self.test_dataset,
-    #         batch_size=self.h_params.batch_size,
-    #         drop_last=False,
-    #         shuffle=False,
-    #         num_workers=self.num_workers,
-    #     )
-    #     return test_loader
+    def test_dataloader(self):
+        test_loader = D.DataLoader(
+            dataset=self.test_dataset,
+            batch_size=self.h_params.batch_size,
+            drop_last=False,
+            shuffle=False,
+            num_workers=self.num_workers,
+            persistent_workers=True,
+            pin_memory=True
+        )
+        return test_loader
+
+    def predict_dataloader(self):
+        predict_loader = D.DataLoader(
+            dataset=self.test_dataset,
+            batch_size=self.h_params.batch_size,
+            drop_last=False,
+            shuffle=False,
+            num_workers=self.num_workers,
+            persistent_workers=True,
+            pin_memory=True
+        )
+        return predict_loader

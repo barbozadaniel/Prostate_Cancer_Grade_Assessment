@@ -81,5 +81,27 @@ class LightningModel(L.LightningModule):
         # This is where you must define what happens during a validation step (per batch)
         logits = self(batch)
         loss = self.cross_entropy_loss(logits, batch['isup_grade']).unsqueeze(0)
-        predicted_labels = logits.argmax(1)
-        return {'test_loss': loss, 'preds': predicted_labels, 'gt': batch['isup_grade']}
+        preds = logits.argmax(1).detach().cpu().numpy()
+        gt = batch['isup_grade'].detach().cpu().numpy()
+        kappa = cohen_kappa_score(preds, gt, weights='quadratic')
+        result = {'test_loss': loss, 'preds': preds, 'gt': gt, 'kappa': kappa}
+        self.validation_step_outputs.append(result)
+        return result
+    
+    def on_test_epoch_end(self):
+        if self.trainer.is_global_zero:
+            outputs = self.all_gather(self.validation_step_outputs)
+            return outputs
+        else:
+            return self.validation_step_outputs
+    
+    def predict_step(self, batch, batch_idx):
+        # This is where you must define what happens during a validation step (per batch)
+        logits = self(batch)
+        loss = self.cross_entropy_loss(logits, batch['isup_grade']).unsqueeze(0)
+        preds = logits.argmax(1).detach().cpu().numpy()
+        gt = batch['isup_grade'].detach().cpu().numpy()
+        kappa = cohen_kappa_score(preds, gt, weights='quadratic')
+        result = {'test_loss': loss, 'preds': preds, 'gt': gt, 'kappa': kappa}
+        self.validation_step_outputs.append(result)
+        return result
