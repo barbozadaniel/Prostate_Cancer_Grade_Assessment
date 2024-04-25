@@ -1,3 +1,4 @@
+import os
 from typing import List
 import numpy as np
 from PIL import Image
@@ -110,11 +111,19 @@ def create_tiles(img, mask, num_tiles, tile_size):
         result.append({'img':img[i], 'mask':mask[i], 'idx':i})
     return result
 
-def create_tiles_object_from_images(list_tile_img_files, list_tile_mask_files):
+def create_tiles_object_from_images(folder_path, list_tile_img_files,
+                                    list_tile_mask_files=[], include_mask=False,
+                                    shuffle=False, remove_bad_images=False):
     tiles = []
-    for i, (tile_img_file, tile_mask_file) in enumerate(zip(list_tile_img_files, list_tile_mask_files)):
-        tile_img = np.asarray(Image.open(tile_img_file))
-        tile_mask = np.asarray(Image.open(tile_mask_file))
-        tiles.append({'img': tile_img, 'mask': tile_mask, 'idx': i})
+
+    if include_mask:
+        for i, (tile_img_file, tile_mask_file) in enumerate(zip(list_tile_img_files, list_tile_mask_files)):
+            tile_img = np.asarray(Image.open(os.path.join(folder_path, 'images', tile_img_file)))
+            tile_mask = np.asarray(Image.open(os.path.join(folder_path, 'masks', tile_mask_file)))
+            tiles.append({'img': tile_img, 'mask': tile_mask, 'idx': i})
+    else:
+        for i, tile_img_file in enumerate(list_tile_img_files):
+            tile_img = np.asarray(Image.open(os.path.join(folder_path, tile_img_file)))
+            tiles.append({'img': tile_img, 'idx': i})
     
     return tiles
