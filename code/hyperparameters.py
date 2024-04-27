@@ -1,4 +1,5 @@
 import argparse
+from typing import Dict
 
 class HyperParameters():
     def __init__(self, backbone: str, head: str, batch_size: int, learning_rate: float,
@@ -17,20 +18,41 @@ class HyperParameters():
         self.warmup_factor = warmup_factor
         self.num_warmup_epochs = num_warmup_epochs
 
-    def to_args(d):
-        args = argparse.Namespace()
+    @staticmethod
+    def load_from_dict(dict_h: Dict[str, any]):
+        backbone = dict_h['backbone']
+        head = dict_h['head']
+        batch_size = dict_h['batch_size']
+        learning_rate = dict_h['learning_rate']
+        num_tiles = dict_h['num_tiles']
+        num_tiles_select = dict_h['num_tiles_select']
+        is_big_image_tile = dict_h['is_big_image_tile']
+        tile_size = dict_h['tile_size']
+        c_out = dict_h['c_out']
+        num_epochs = dict_h['num_epochs']
+        warmup_factor = dict_h['warmup_factor']
+        num_warmup_epochs = dict_h['num_warmup_epochs']
 
-        def to_args_recursive(args, d, prefix=''):
-            for k, v in d.items():
-                if type(v) == dict:
-                    to_args_recursive(args, v, prefix=k)
-                elif type(v) in [tuple, list]:
-                    continue
+        hp = HyperParameters(backbone, head, batch_size, learning_rate,
+                             num_tiles, num_tiles_select, is_big_image_tile,
+                             tile_size, c_out, num_epochs, warmup_factor, num_warmup_epochs)
+
+        return hp
+
+def to_args(d: Dict[str, any]):
+    args = argparse.Namespace()
+
+    def to_args_recursive(args, d, prefix=''):
+        for k, v in d.items():
+            if type(v) == dict:
+                to_args_recursive(args, v, prefix=k)
+            elif type(v) in [tuple, list]:
+                continue
+            else:
+                if prefix:
+                    args.__setattr__(prefix + '_' + k, v)
                 else:
-                    if prefix:
-                        args.__setattr__(prefix + '_' + k, v)
-                    else:
-                        args.__setattr__(k, v)
+                    args.__setattr__(k, v)
 
-        to_args_recursive(args, d)
-        return args
+    to_args_recursive(args, d)
+    return args
