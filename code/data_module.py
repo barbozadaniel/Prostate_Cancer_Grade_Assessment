@@ -51,8 +51,6 @@ class TileDataset(D.Dataset):
                         image = self.transform(image)
 
                     image = transforms.ToTensor()(1 - np.array(image))
-                    # image = transforms.Normalize([1.0-0.90949707, 1.0-0.8188697, 1.0-0.87795304],
-                    #                              [0.1279171, 0.24528177, 0.16098117])(image)
                     list_image_tiles.append(image)
 
                 image_stack = torch.stack(list_image_tiles, dim=0)

@@ -74,13 +74,12 @@ def main():
     elif h_params.backbone in ['efficientnet-b0']:
         model = ENetModel(c_out=h_params.c_out,
                           backbone=h_params.backbone)
-    
+
     if dict_checkpoints[h_params.backbone] != '':
         state_dict = torch.load(dict_checkpoints[h_params.backbone],
                                 map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
         model.load_state_dict(state_dict)
         print(f"Previously trained checkpoint `{dict_checkpoints[h_params.backbone]}` loaded successfully!")
-
 
     # Setting the name of the experiment
     expt_name: str = f'{h_params.backbone}'
@@ -89,7 +88,7 @@ def main():
     # Loading the 'train.csv' file
     df_train_data: pd.DataFrame = pd.read_csv(TRAIN_DATA_CSV_PATH)
     df_train_data = df_train_data[df_train_data.is_present == 1]
-    
+
     # Sampling 100 files foe debugging (if True)
     if IS_DEBUG:
         df_train_data = df_train_data.sample(500).reset_index(drop=True)
@@ -142,31 +141,29 @@ def main():
             torch.save(model.state_dict(), os.path.join(TRAINED_MODELS_FOLDER, final_model_file_name))
             print(f'Final model for Fold {fold + 1} -> `{final_model_file_name}` saved successfully!')
 
-            # testing_results = trainer.predict(model=lt_model, datamodule=data_module)
-            
             trainer.test(model=lightning_model, datamodule=data_module)
 
             break
 
     elif IS_TEST:
         # t_model_1 = model.load_state_dict('trained_models/resnet50-20240423-000603/fold_1.pth')
-        
+
         chkpt_file_path: str = 'logs/resnet50-20240423-000603/fold_2/epoch=26-kappa=0.7400.ckpt'
         hparams_file_path: str = 'logs/resnet50-20240423-000603/fold_2/hparams.yaml'
-        
+
         # Loading hparams.yaml
-        loaded_h_params: Dict[str, any] = {}
+        dict_h_params: Dict[str, any] = {}
         with open(hparams_file_path, 'r') as stream:
             dict_yaml = yaml.safe_load(stream)
-            loaded_h_params = dict_yaml['h_params']
-        
+            dict_h_params = dict_yaml['h_params']
+
         # Testing Code
         lt_model = LightningModel.load_from_checkpoint(model=model,
-                                                       h_params=loaded_h_params,
+                                                       h_params=dict_h_params,
                                                        checkpoint_path=chkpt_file_path,
                                                        hparams_file=hparams_file_path,
                                                        map_location=None)
-        
+
         data_module: L.LightningDataModule = PandaDataModule(train_folder_path=os.path.join(DATASET_FOLDER_PATH, TRAINING_DATA_FOLDER),
                                                              test_folder_path=os.path.join(DATASET_FOLDER_PATH, TESTING_DATA_FOLDER),
                                                              # list_train_idx=list_train_idx,
