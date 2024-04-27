@@ -24,7 +24,7 @@ import skimage
 import tqdm
 from tqdm.contrib.concurrent import process_map
 
-from visual_helpers import create_tiles
+from visual_helpers import create_tiles, get_clipping_bounds
 
 IS_DEBUG = True
 
@@ -35,13 +35,11 @@ PANDA_IMAGE_FOLDER_PATH: str = os.path.join(PANDA_DATASET_FOLDER_PATH, 'train_im
 PANDA_MASKS_FOLDER_PATH: str = os.path.join(PANDA_DATASET_FOLDER_PATH, 'train_label_masks')
 TRAIN_DATA_CSV_PATH: str = os.path.join(PANDA_DATASET_FOLDER_PATH, 'train.csv')
 TEST_DATA_CSV_PATH: str = os.path.join(PANDA_DATASET_FOLDER_PATH, 'test.csv')
-
-df_train_data: pd.DataFrame = pd.read_csv(TRAIN_DATA_CSV_PATH)
-list_image_ids: List[str] = list(df_train_data[df_train_data.is_present == 1].image_id.values)
+SUSPICIOUS_DATA_CSV_PATH: str = os.path.join(PANDA_DATASET_FOLDER_PATH, 'suspicious_data.csv')
 
 NUM_TILES = 1
 TILE_SIZE = 512
-LEVEL_DIMS = 1
+LEVEL_DIMS = 1      # Medium resolution
 
 NON_TILED_DATASET_NAME = f'nontiled-prostate-{NUM_TILES}x{TILE_SIZE}x{TILE_SIZE}'
 NON_TILED_DATASET_FOLDER_PATH = os.path.join(DATASET_FOLDER_PATH, NON_TILED_DATASET_NAME)
@@ -53,50 +51,45 @@ os.makedirs(NON_TILED_DATASET_FOLDER_PATH, exist_ok=True)
 os.makedirs(NON_TILED_IMAGE_FOLDER_PATH, exist_ok=True)
 os.makedirs(NON_TILED_MASKS_FOLDER_PATH, exist_ok=True)
 
-def create_resized_clipped_image(image_id, num_tiles, new_size, level_dim=1):
-    og_img: np.ndarray = skimage.io.ImageCollection(os.path.join(PANDA_IMAGE_FOLDER_PATH, f'{image_id}.tiff'))[level_dim]
-    og_mask: np.ndarray = skimage.io.ImageCollection(os.path.join(PANDA_MASKS_FOLDER_PATH, f'{image_id}_mask.tiff'))[level_dim]
+# Loading the CSV files
+df_train_data: pd.DataFrame = pd.read_csv(TRAIN_DATA_CSV_PATH)
+df_suspicious_data: pd.DataFrame = pd.read_csv(SUSPICIOUS_DATA_CSV_PATH)
 
-    # Isolating the Red channel of the mask (Only 1st channel viz. Red channel has mask's target values)
-    og_mask_r = og_mask[:, :, 0]
+# Excluding data rows corresponding to suspicious/erroneous images
+df_train_data = df_train_data.loc[~df_train_data.image_id.isin(df_suspicious_data.image_id.values)]
+df_train_data = df_train_data.reset_index(drop=True).copy()
 
-    # Setting all values to '1' to create a blob(s) of '1'
-    og_mask_r[og_mask_r > 0] = 1
+# Exporting the Train DataFrame to a CSV
+df_train_data.to_csv(os.path.join(TILED_DATASET_FOLDER_PATH,
+                                  os.path.basename(TRAIN_DATA_CSV_PATH)),
+                     index=False)
 
+# Creating a list of Image IDs
+list_image_ids: List[str] = list(df_train_data.image_id.values)
+
+def create_resized_image(image_id, num_tiles, new_size, level_dim=1, is_clipping=False):
     try:
-        # Finding the top and bottom y-locations where the blob is located in the image
-        all_1_y_idxs, _ = np.where(og_mask_r == 1)
-        
-        if all_1_y_idxs.shape[0] > 0:
-            top_most_1_y = all_1_y_idxs[0]
-            bottom_most_1_y = all_1_y_idxs[-1]
+        # Reading the TIFF image and mask files
+        og_img: np.ndarray = skimage.io.ImageCollection(os.path.join(PANDA_IMAGE_FOLDER_PATH, f'{image_id}.tiff'))[level_dim]
+        og_mask: np.ndarray = skimage.io.ImageCollection(os.path.join(PANDA_MASKS_FOLDER_PATH, f'{image_id}_mask.tiff'))[level_dim]
 
-            # Clipping the image from the top and bottom
-            og_mask_tb_clipped = og_mask_r[top_most_1_y:bottom_most_1_y, :]
+        clipped_og_img: np.ndarray = og_img.copy()
+        clipped_og_mask: np.ndarray = og_mask.copy()
 
-            # Finding the left and right x-locations where the blob is located in the image
-            all_1_x_idxs, _ = np.where(og_mask_tb_clipped.T == 1)
-            
-            if all_1_x_idxs.shape[0] > 0:
-                right_most_1_x = all_1_x_idxs[0]
-                left_most_1_x = all_1_x_idxs[-1]
+        # Clipping images to reduce white space (before tiling)
+        if is_clipping:
+            x_b, y_b = get_clipping_bounds(og_img)
+            clipped_og_img = og_img[x_b[0]:x_b[1], y_b[0]:y_b[1]]
+            clipped_og_mask = og_mask[x_b[0]:x_b[1], y_b[0]:y_b[1]]
 
-                # Creating the clipped images and mask using the top/bottom/left/right bounds of the blob
-                og_img_all_clipped = og_img[top_most_1_y:bottom_most_1_y, right_most_1_x:left_most_1_x]
-                og_mask_all_clipped = og_mask[top_most_1_y:bottom_most_1_y, right_most_1_x:left_most_1_x, 0]
-            else:
-                og_img_all_clipped = og_img[top_most_1_y:bottom_most_1_y, :new_size[1]]
-                og_mask_all_clipped = og_mask[top_most_1_y:bottom_most_1_y, :new_size[1], 0]
-        else:
-            og_img_all_clipped = og_img.copy()
-            og_mask_all_clipped = og_mask.copy()
-
-        resized_clipped_img = Image.fromarray(og_img_all_clipped).resize(new_size)
-        resized_clipped_mask = Image.fromarray(og_mask_all_clipped).resize(new_size)
+        # Resizing the image to the new size
+        resized_clipped_img = Image.fromarray(clipped_og_img).resize(new_size)
+        resized_clipped_mask = Image.fromarray(clipped_og_mask).resize(new_size)
 
         cv_img = cv2.cvtColor(np.array(resized_clipped_img), cv2.COLOR_RGB2BGR)
         cv_mask = np.array(resized_clipped_mask)
 
+        # Saving resized images & masks to the new Non-Tiled Dataset folder
         resized_file_name: str = f'{image_id}.png'
         cv2.imwrite(os.path.join(NON_TILED_IMAGE_FOLDER_PATH, resized_file_name), cv_img)
         cv2.imwrite(os.path.join(NON_TILED_MASKS_FOLDER_PATH, resized_file_name), cv_mask)
@@ -108,17 +101,17 @@ def create_resized_clipped_image(image_id, num_tiles, new_size, level_dim=1):
 
 
 def run_pool_function(image_id):
-    id = create_resized_clipped_image(image_id, num_tiles=NUM_TILES,
-                                      new_size=(TILE_SIZE, TILE_SIZE),
-                                      level_dim=LEVEL_DIMS)
+    id = create_resized_image(image_id, num_tiles=NUM_TILES,
+                              new_size=(TILE_SIZE, TILE_SIZE), level_dim=LEVEL_DIMS,
+                              is_clipping=True)
     return id
 
 
 if __name__ == '__main__':
     if IS_DEBUG:
-        create_resized_clipped_image('aaa5732cd49bffddf0d2b7d36fbb0a83', num_tiles=NUM_TILES,
-                                     new_size=(TILE_SIZE, TILE_SIZE),
-                                     level_dim=LEVEL_DIMS)
+        create_resized_image(list_image_ids[0], num_tiles=NUM_TILES,
+                             new_size=(TILE_SIZE, TILE_SIZE), level_dim=LEVEL_DIMS,
+                             is_clipping=True)
     else:
         with Pool(processes=8) as pool:
             r = process_map(run_pool_function, list_image_ids, max_workers=8, chunksize=4)
