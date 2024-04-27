@@ -15,7 +15,7 @@ from visual_helpers import create_tiles_object_from_images
 class TileDataset(D.Dataset):
     def __init__(self, dataset_folder_path: str, df_data: pd.DataFrame,
                  num_tiles: int, num_tiles_select: int, tile_size: int,
-                 is_big_image_tile: bool = False, transform=None):
+                 is_big_image_tile: bool = False, transform=None, tile_transform=None):
         """
         dataset_folder_path: Folder path where the Dataset is located
         df_data: DataFrame containing image metadata
@@ -31,6 +31,7 @@ class TileDataset(D.Dataset):
         self.list_images: List[str] = self.df_data['image_id'].values
 
         self.transform = transform
+        self.tile_transform = tile_transform
 
     def __getitem__(self, idx):
         image_id = self.list_images[idx]
@@ -64,11 +65,12 @@ class TileDataset(D.Dataset):
                 # Single big image as input (N x N big image of tiles)
                 list_idx = list(range(0, self.num_tiles))
                 list_tile_file_names = [f'{image_id}_{str(i)}.png' for i in list_idx]
-                list_tiles = create_tiles_object_from_images(self.dataset_folder_path, list_tile_file_names,
+                list_tiles = create_tiles_object_from_images(self.dataset_folder_path,
+                                                             self.num_tiles,
+                                                             list_tile_file_names,
                                                              include_mask=False,
                                                              shuffle=True,
-                                                             remove_bad_images=True)
-                
+                                                             replace_bad_images=True)
                 num_rows_cols: int = int(np.sqrt(self.num_tiles))
                 big_image = np.zeros((self.tile_size * num_rows_cols,
                                       self.tile_size * num_rows_cols, 3))
@@ -84,8 +86,8 @@ class TileDataset(D.Dataset):
                             tile_image = np.ones((self.image_size, self.image_size, 3)).astype(np.uint8) * 255
                         tile_image = 255 - tile_image
 
-                        if self.transform is not None:
-                            tile_image = self.transform(Image.fromarray(tile_image))
+                        if self.tile_transform is not None:
+                            tile_image = self.tile_transform(Image.fromarray(tile_image))
 
                         h1 = h * self.tile_size
                         w1 = w * self.tile_size
@@ -161,9 +163,19 @@ class PandaDataModule(L.LightningDataModule):
             [
                 transforms.RandomHorizontalFlip(0.5),
                 transforms.RandomVerticalFlip(0.5),
+                transforms.RandomRotation(30),
                 transforms.ToTensor()
             ]
         )
+
+        self.tile_train_transform = transforms.RandomApply(torch.nn.ModuleList(
+            [
+                transforms.RandomHorizontalFlip(0.5),
+                transforms.RandomVerticalFlip(0.5),
+                transforms.RandomRotation(30),
+                transforms.ToTensor()
+            ]
+        ))
 
         self.test_transform = transforms.Compose(
             [
@@ -183,17 +195,20 @@ class PandaDataModule(L.LightningDataModule):
         self.train_dataset = TileDataset(os.path.join(self.train_folder_path, 'images'),
                                          df_train_data.iloc[self.list_train_idx],
                                          self.h_params.num_tiles, self.h_params.num_tiles_select,
-                                         self.h_params.tile_size, self.h_params.is_big_image_tile, self.train_transform)
+                                         self.h_params.tile_size, self.h_params.is_big_image_tile,
+                                         self.train_transform, self.tile_train_transform)
 
         self.val_dataset = TileDataset(os.path.join(self.train_folder_path, 'images'),
                                        df_train_data.iloc[self.list_val_idx],
                                        self.h_params.num_tiles, self.h_params.num_tiles_select,
-                                       self.h_params.tile_size, self.h_params.is_big_image_tile, self.test_transform)
+                                       self.h_params.tile_size, self.h_params.is_big_image_tile,
+                                       self.test_transform)
 
         self.test_dataset = TileDataset(os.path.join(self.test_folder_path, 'images'),
                                         df_test_data,
                                         self.h_params.num_tiles, self.h_params.num_tiles_select,
-                                        self.h_params.tile_size, self.h_params.is_big_image_tile, self.test_transform)
+                                        self.h_params.tile_size, self.h_params.is_big_image_tile,
+                                        self.test_transform)
 
     def train_dataloader(self):
         train_loader = D.DataLoader(

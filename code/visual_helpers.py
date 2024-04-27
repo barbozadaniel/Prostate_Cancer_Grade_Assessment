@@ -1,4 +1,5 @@
 import os
+from random import sample
 from typing import Dict, List, Tuple
 import cv2
 import numpy as np
@@ -135,22 +136,66 @@ def create_tiles(img: np.ndarray, mask: np.ndarray,
 
 
 def create_tiles_object_from_images(folder_path: str,
+                                    num_tiles: int,
                                     list_tile_img_files: List[str],
                                     list_tile_mask_files: List[str] = [],
                                     include_mask: bool = False,
                                     shuffle: bool = False,
-                                    remove_bad_images: bool = False) -> List[Dict[str, any]]:
+                                    replace_bad_images: bool = False) -> List[Dict[str, any]]:
+    min_p_coverage: float = 15.0
     list_tiles: List[Dict[str, any]] = []
 
-    if include_mask:
-        for i, (tile_img_file, tile_mask_file) in enumerate(zip(list_tile_img_files, list_tile_mask_files)):
-            tile_img = np.asarray(Image.open(os.path.join(folder_path, 'images', tile_img_file)))
-            tile_mask = np.asarray(Image.open(os.path.join(folder_path, 'masks', tile_mask_file)))
-            list_tiles.append({'img': tile_img, 'mask': tile_mask, 'idx': i})
-    else:
-        for i, tile_img_file in enumerate(list_tile_img_files):
-            tile_img = np.asarray(Image.open(os.path.join(folder_path, tile_img_file)))
-            list_tiles.append({'img': tile_img, 'idx': i})
+    list_good_image_tiles = []
+    list_good_mask_tiles = []
+    for i, _ in enumerate(list_tile_img_files):
+        if include_mask:
+            tile_img = cv2.imread(os.path.join(folder_path, 'images', list_tile_img_files[i]))
+            tile_mask = cv2.imread(os.path.join(folder_path, 'masks', list_tile_mask_files[i]))
+        else:
+            tile_img = cv2.imread(os.path.join(folder_path, list_tile_img_files[i]))
+
+        if replace_bad_images:
+            # Obtain clipping boundaries
+            x_b, y_b = get_clipping_bounds(tile_img)
+
+            # Obtain the % Coverage
+            p_coverage = get_image_bounds_coverage(tile_img, x_b, y_b)
+
+            # Including image tiles with % coverage above minimum
+            if p_coverage > min_p_coverage:
+                list_good_image_tiles.append(tile_img)
+                if include_mask:
+                    list_good_mask_tiles.append(tile_mask)
+        else:
+            list_good_image_tiles.append(tile_img)
+            if include_mask:
+                list_good_mask_tiles.append(tile_mask)
+
+    if replace_bad_images:
+        # Resampling good tiles (if less than required number of tiles)
+        num_good_tiles: int = len(list_good_image_tiles)
+        num_tiles_to_resample: int = num_tiles - num_good_tiles
+
+        # Adding resample tiles to the list of good tiles (and masks)
+        if num_tiles_to_resample > 0:
+            list_idxs_to_sample = sample(range(0, num_good_tiles), num_tiles_to_resample)
+            list_good_image_tiles.extend(list_good_image_tiles[list_idxs_to_sample])
+            if include_mask:
+                list_good_mask_tiles.extend(list_good_mask_tiles[list_idxs_to_sample])
+
+    # Shuffling the indexes (if needed)
+    list_idxs = range(num_tiles)
+    if shuffle:
+        shuffle(list_idxs)
+
+    for i, idx in enumerate(list_idxs):
+        if include_mask:
+            list_tiles.append({'img': list_good_image_tiles[idx],
+                               'mask': list_good_mask_tiles[idx],
+                               'idx': i})
+        else:
+            list_tiles.append({'img': list_good_image_tiles[idx],
+                               'idx': i})
 
     return list_tiles
 
@@ -165,7 +210,7 @@ def get_clipping_bounds(og_np_img: np.ndarray, perform_thresholding: bool = Fals
         # Converting RGB image to Grayscale image
         tmp_gs_img = cv2.cvtColor(tmp_og_img, cv2.COLOR_RGB2GRAY)
 
-        # Applying thresdholding for improved image clipping
+        # Applying thresholding for improved image clipping
         th_val, thresh_img = cv2.threshold(tmp_gs_img, 150, 255, cv2.THRESH_BINARY)
         tmp_og_img[thresh_img == 0] = 1
         tmp_og_img[thresh_img == 255] = 0
@@ -192,8 +237,7 @@ def get_clipping_bounds(og_np_img: np.ndarray, perform_thresholding: bool = Fals
         bottom_most_1_y = all_1_y_idxs[-1]
 
         # Clipping the image from the top and bottom
-        tmp_og_1c_img_clipped = tmp_og_1c_img[top_most_1_y:bottom_most_1_y, :].copy(
-        )
+        tmp_og_1c_img_clipped = tmp_og_1c_img[top_most_1_y:bottom_most_1_y, :].copy()
 
         # Finding the left and right x-locations where the blob is located in the image
         all_1_x_idxs, _ = np.where(tmp_og_1c_img_clipped.T == 1)
@@ -214,4 +258,4 @@ def get_image_bounds_coverage(og_np_img: np.ndarray,
     coverage: float = 0
     coverage = (abs(x_bounds[1] - x_bounds[0]) * abs(y_bounds[1] -
                 y_bounds[0])) / (og_np_img.shape[0] * og_np_img.shape[1])
-    return coverage
+    return coverage * 100
