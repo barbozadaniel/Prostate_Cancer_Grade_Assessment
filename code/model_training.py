@@ -6,7 +6,7 @@ import pandas as pd
 from sklearn.model_selection import StratifiedKFold
 import torch
 from models.resnet_models import ResNetModel
-from models.enet_models import ENetModel
+from models.enet_models import EfficientNetModel
 from data_module import PandaDataModule
 from lightning_module import LightningModel
 from hyperparameters import HyperParameters
@@ -24,8 +24,8 @@ IS_DEBUG = False
 IS_TRAIN = True
 IS_TEST = not(IS_TRAIN)
 
-TRAINING_DATA_FOLDER: str = 'train-tiled-prostate-36x256x256'
-TESTING_DATA_FOLDER: str = 'test-tiled-prostate-36x256x256'
+TRAINING_DATA_FOLDER: str = 'train-closetiled-prostate-36x256x256'
+TESTING_DATA_FOLDER: str = 'test-closetiled-prostate-36x256x256'
 DATASET_FOLDER_PATH: str = os.path.join(os.path.abspath('./Prostate_Cancer_Grade_Assessment'), 'dataset')
 TRAINED_MODELS_FOLDER: str = os.path.abspath('./trained_models')
 OUTPUT_LOG_FOLDER: str = './logs'
@@ -46,14 +46,14 @@ def main():
     L.seed_everything(SEED)
     h_params: HyperParameters = HyperParameters(backbone='efficientnet-b0',
                                                 head='basic',
+                                                c_out=5,
                                                 batch_size=4,
                                                 learning_rate=3e-4,
                                                 num_tiles=NUM_TILES,
                                                 num_tiles_select=NUM_TILES,
                                                 is_big_image_tile=True,
                                                 tile_size=TILE_SIZE,
-                                                c_out=5,
-                                                num_epochs=30 if not IS_DEBUG else 5,
+                                                num_epochs=10 if not IS_DEBUG else 5,
                                                 warmup_factor=10,
                                                 num_warmup_epochs=1)
 
@@ -72,8 +72,8 @@ def main():
                             backbone=h_params.backbone,
                             head=h_params.head)
     elif h_params.backbone in ['efficientnet-b0']:
-        model = ENetModel(c_out=h_params.c_out,
-                          backbone=h_params.backbone)
+        model = EfficientNetModel(c_out=h_params.c_out,
+                                  backbone=h_params.backbone)
 
     if dict_checkpoints[h_params.backbone] != '':
         state_dict = torch.load(dict_checkpoints[h_params.backbone],
@@ -84,14 +84,17 @@ def main():
     # Setting the name of the experiment
     expt_name: str = f'{h_params.backbone}'
     expt_date = datetime.now().strftime('%Y%m%d-%H%M%S')
+    print(f'Experiment: {expt_name}-{expt_date}')
 
     # Loading the 'train.csv' file
     df_train_data: pd.DataFrame = pd.read_csv(TRAIN_DATA_CSV_PATH)
-    df_train_data = df_train_data[df_train_data.is_present == 1]
+    print(f'Total images for training: {len(df_train_data)}')
+    # df_train_data = df_train_data[df_train_data.is_present == 1]
 
     # Sampling 100 files foe debugging (if True)
     if IS_DEBUG:
-        df_train_data = df_train_data.sample(500).reset_index(drop=True)
+        df_train_data = df_train_data.sample(500).reset_index(drop=True).copy()
+        print(f'Total images selected fr debugging: {len(df_train_data)}')
 
     #
     k_fold = StratifiedKFold(n_splits=5, random_state=SEED, shuffle=True)
@@ -148,14 +151,21 @@ def main():
     elif IS_TEST:
         # t_model_1 = model.load_state_dict('trained_models/resnet50-20240423-000603/fold_1.pth')
 
-        chkpt_file_path: str = 'logs/resnet50-20240423-000603/fold_2/epoch=26-kappa=0.7400.ckpt'
-        hparams_file_path: str = 'logs/resnet50-20240423-000603/fold_2/hparams.yaml'
+        # chkpt_file_path: str = 'logs/resnet50-20240423-000603/fold_2/epoch=26-kappa=0.7400.ckpt'
+        # hparams_file_path: str = 'logs/resnet50-20240423-000603/fold_2/hparams.yaml'
+        
+        # chkpt_file_path: str = os.path.join('/teamspace/studios/this_studio/logs/efficientnet-b0-20240425-114106/fold_1/epoch=00-kappa=0.9605.ckpt')
+        chkpt_file_path = '/teamspace/studios/this_studio/trained_models/cls_effnet_b0_Rand36r36tiles256_big_bce_lr0.3_augx2_30epo_model_fold0.pth'
+        hparams_file_path: str = '/teamspace/studios/this_studio/logs/efficientnet-b0-20240425-114106/fold_1/hparams.yaml'
 
         # Loading hparams.yaml
         dict_h_params: Dict[str, any] = {}
         with open(hparams_file_path, 'r') as stream:
             dict_yaml = yaml.safe_load(stream)
-            dict_h_params = dict_yaml['h_params']
+            dict_h_params = dict_yaml
+
+        # Instantiating a HyperParameters object
+        h_params = HyperParameters.load_from_dict(dict_h=dict_h_params)
 
         # Testing Code
         lt_model = LightningModel.load_from_checkpoint(model=model,

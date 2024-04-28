@@ -69,8 +69,8 @@ class TileDataset(D.Dataset):
                                                              self.num_tiles,
                                                              list_tile_file_names,
                                                              include_mask=False,
-                                                             shuffle=True,
-                                                             replace_bad_images=True)
+                                                             is_shuffle=False,
+                                                             replace_bad_images=False)
                 num_rows_cols: int = int(np.sqrt(self.num_tiles))
                 big_image = np.zeros((self.tile_size * num_rows_cols,
                                       self.tile_size * num_rows_cols, 3))
@@ -153,6 +153,7 @@ class PandaDataModule(L.LightningDataModule):
 
         self.train_transform = None
         self.test_transform = None
+        self.tile_train_transform = None
 
         self.train_dataset: D.Dataset = None
         self.val_dataset: D.Dataset = None
@@ -163,19 +164,18 @@ class PandaDataModule(L.LightningDataModule):
             [
                 transforms.RandomHorizontalFlip(0.5),
                 transforms.RandomVerticalFlip(0.5),
-                transforms.RandomRotation(30),
                 transforms.ToTensor()
             ]
         )
 
-        self.tile_train_transform = transforms.RandomApply(torch.nn.ModuleList(
+        self.tile_train_transform = transforms.Compose(
             [
                 transforms.RandomHorizontalFlip(0.5),
                 transforms.RandomVerticalFlip(0.5),
                 transforms.RandomRotation(30),
                 transforms.ToTensor()
             ]
-        ))
+        )
 
         self.test_transform = transforms.Compose(
             [
@@ -187,10 +187,10 @@ class PandaDataModule(L.LightningDataModule):
 
     def setup(self, stage=None):
         df_train_data: pd.DataFrame = pd.read_csv(os.path.join(self.train_folder_path, 'train.csv'))
-        df_train_data = df_train_data[df_train_data.is_present == 1]
+        # df_train_data = df_train_data[df_train_data.is_present == 1]
 
         df_test_data: pd.DataFrame = pd.read_csv(os.path.join(self.test_folder_path, 'test.csv'))
-        df_test_data = df_test_data[df_test_data.is_present == 1]
+        # df_test_data = df_test_data[df_test_data.is_present == 1]
 
         self.train_dataset = TileDataset(os.path.join(self.train_folder_path, 'images'),
                                          df_train_data.iloc[self.list_train_idx],

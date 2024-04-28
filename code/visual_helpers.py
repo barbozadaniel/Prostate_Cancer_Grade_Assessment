@@ -1,10 +1,9 @@
 import os
-from random import sample
+import random
 from typing import Dict, List, Tuple
 import cv2
 import numpy as np
 from PIL import Image
-from openslide import OpenSlide
 
 
 def create_big_image_from_tiles(list_tiles: List[Dict[str, any]],
@@ -38,7 +37,7 @@ def create_big_image_from_tiles(list_tiles: List[Dict[str, any]],
     return big_image
 
 
-def plot_img_mask_details(slide_img: OpenSlide, slide_mask: OpenSlide,
+def plot_img_mask_details(slide_img: any, slide_mask: any,
                           data_source: str = 'radboud', alpha: float = 0.4,
                           show_thumbnail: bool = True, max_size=(400, 400)) -> None:
     if data_source not in ['radboud', 'karolinska']:
@@ -140,19 +139,19 @@ def create_tiles_object_from_images(folder_path: str,
                                     list_tile_img_files: List[str],
                                     list_tile_mask_files: List[str] = [],
                                     include_mask: bool = False,
-                                    shuffle: bool = False,
+                                    is_shuffle: bool = False,
                                     replace_bad_images: bool = False) -> List[Dict[str, any]]:
     min_p_coverage: float = 15.0
     list_tiles: List[Dict[str, any]] = []
 
-    list_good_image_tiles = []
-    list_good_mask_tiles = []
+    np_good_image_tiles: np.ndarray = np.array([])
+    np_good_mask_tiles: np.ndarray = np.array([])
     for i, _ in enumerate(list_tile_img_files):
         if include_mask:
-            tile_img = cv2.imread(os.path.join(folder_path, 'images', list_tile_img_files[i]))
-            tile_mask = cv2.imread(os.path.join(folder_path, 'masks', list_tile_mask_files[i]))
+            tile_img = np.asarray(Image.open(os.path.join(folder_path, 'images', list_tile_img_files[i])))
+            tile_mask = np.asarray(Image.open(os.path.join(folder_path, 'masks', list_tile_mask_files[i])))
         else:
-            tile_img = cv2.imread(os.path.join(folder_path, list_tile_img_files[i]))
+            tile_img = np.asarray(Image.open(os.path.join(folder_path, list_tile_img_files[i])))
 
         if replace_bad_images:
             # Obtain clipping boundaries
@@ -163,38 +162,43 @@ def create_tiles_object_from_images(folder_path: str,
 
             # Including image tiles with % coverage above minimum
             if p_coverage > min_p_coverage:
-                list_good_image_tiles.append(tile_img)
+                np_good_image_tiles = np.concatenate([np_good_image_tiles, tile_img[np.newaxis, :]], axis=0) if len(np_good_image_tiles) > 0 else tile_img[np.newaxis, :]
                 if include_mask:
-                    list_good_mask_tiles.append(tile_mask)
+                    np_good_mask_tiles = np.concatenate([np_good_mask_tiles, tile_mask[np.newaxis, :]], axis=0) if len(np_good_mask_tiles) > 0 else tile_mask[np.newaxis, :]
         else:
-            list_good_image_tiles.append(tile_img)
+            np_good_image_tiles = np.concatenate([np_good_image_tiles, tile_img[np.newaxis, :]], axis=0) if len(np_good_image_tiles) > 0 else tile_img[np.newaxis, :]
             if include_mask:
-                list_good_mask_tiles.append(tile_mask)
+                np_good_mask_tiles = np.concatenate([np_good_mask_tiles, tile_mask[np.newaxis, :]], axis=0) if len(np_good_mask_tiles) > 0 else tile_mask[np.newaxis, :]
 
     if replace_bad_images:
         # Resampling good tiles (if less than required number of tiles)
-        num_good_tiles: int = len(list_good_image_tiles)
+        num_good_tiles: int = len(np_good_image_tiles)
         num_tiles_to_resample: int = num_tiles - num_good_tiles
 
         # Adding resample tiles to the list of good tiles (and masks)
         if num_tiles_to_resample > 0:
-            list_idxs_to_sample = sample(range(0, num_good_tiles), num_tiles_to_resample)
-            list_good_image_tiles.extend(list_good_image_tiles[list_idxs_to_sample])
+            if num_good_tiles == 0:
+                list_idxs_to_sample = range(0, num_good_tiles)
+            else:
+                list_idxs_to_sample = random.choices(range(0, num_good_tiles), k=num_tiles_to_resample)
+            
+            for idx in list_idxs_to_sample:
+                np_good_image_tiles = np.concatenate([np_good_image_tiles, np_good_image_tiles[list_idxs_to_sample]], axis=0)
             if include_mask:
-                list_good_mask_tiles.extend(list_good_mask_tiles[list_idxs_to_sample])
+                np_good_mask_tiles = np.concatenate([np_good_mask_tiles, np_good_mask_tiles[list_idxs_to_sample]], axis=0)
 
     # Shuffling the indexes (if needed)
-    list_idxs = range(num_tiles)
-    if shuffle:
-        shuffle(list_idxs)
+    list_idxs = list(range(num_tiles))
+    if is_shuffle:
+        random.shuffle(list_idxs)
 
     for i, idx in enumerate(list_idxs):
         if include_mask:
-            list_tiles.append({'img': list_good_image_tiles[idx],
-                               'mask': list_good_mask_tiles[idx],
+            list_tiles.append({'img': np_good_image_tiles[idx],
+                               'mask': np_good_mask_tiles[idx],
                                'idx': i})
         else:
-            list_tiles.append({'img': list_good_image_tiles[idx],
+            list_tiles.append({'img': np_good_image_tiles[idx],
                                'idx': i})
 
     return list_tiles

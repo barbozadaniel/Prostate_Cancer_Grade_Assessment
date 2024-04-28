@@ -1,9 +1,9 @@
 import torch.nn as nn
 from efficientnet_pytorch import model as enet
 
-class ENetModel(nn.Module):
+class EfficientNetModel(nn.Module):
     def __init__(self, backbone, c_out=5):
-        super(ENetModel, self).__init__()
+        super(EfficientNetModel, self).__init__()
         self.enet = enet.EfficientNet.from_pretrained(backbone)
 
         self.myfc = nn.Linear(self.enet._fc.in_features, c_out)
